@@ -91,12 +91,66 @@ manual-approval gate. GitHub Release notes are filled automatically from the mat
 
 ### Prerequisites
 
-Both [pypi](https://pypi.org/) and [testpypi](https://test.pypi.org/) are configured for
+Publishing uses
 [trusted publishing](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/)
-(OIDC) — no API tokens are stored. Each trusted publisher is bound to this repo, the
-`release.yml` workflow, and the matching GitHub Environment (`pypi` / `testpypi`); the
-environment name in the publisher config must exactly match the `environment:` on the
-corresponding job.
+(OIDC): GitHub proves the workflow's identity to PyPI directly, so no API tokens are
+stored in CI. This needs a one-time setup across three separate services — see the
+cheatsheet below.
+
+### Trusted Publishing Cheatsheet
+
+**The binding.** A "trusted publisher" is a record on PyPI that says which workflow is
+allowed to publish. It is four values, and all four must match exactly:
+
+| Field | Value for this repo |
+|---|---|
+| Owner | `shb84` |
+| Repository | `ipysensitivityprofiler` |
+| Workflow | `release.yml` — the *filename*, not the display name |
+| Environment | `pypi` on PyPI · `testpypi` on TestPyPI |
+
+**What "environment" means here.** A GitHub *deployment environment*: a named permission
+gate in repository settings. It has nothing to do with a `pixi`, conda or `virtualenv`
+environment despite the name — nothing is installed. It is owned by this repository, not
+by PyPI; PyPI only reads the name out of the identity token and compares it. Note the
+split: the name appears in `release.yml`, but its **protection rules live in GitHub
+settings and are not in version control**, so reading the workflow file tells you nothing
+about whether a gate is actually active.
+
+**Trusted publishing is per project, not per account.** Configuring it for one package
+does nothing for another — every PyPI project carries its own publisher list.
+
+Do step 1 first; see the trap below.
+
+**1. GitHub environments** — Settings → Environments
+
+  - `testpypi` — create it, no rules.
+  - `pypi` — create it, tick **Required reviewers**, add yourself, then
+    **Save protection rules**. The reviewer list does not persist without that save.
+
+**2. PyPI** — Manage → Publishing on the project → add a GitHub publisher, using the four
+values above with environment `pypi`. If the project does not exist on PyPI yet, use the
+*pending publisher* flow under Account → Publishing instead; it converts to a normal
+publisher on first upload.
+
+**3. TestPyPI** — the same again, with environment `testpypi`. Separate site, separate
+login. Configuring only PyPI leaves the pipeline failing at its first publish job.
+
+**4. Verify with a real tag.** The jobs confirm the three pieces in order:
+
+  1. `publish-testpypi` succeeds → the TestPyPI publisher matches.
+  2. `publish-pypi` **pauses for approval** → the `pypi` protection rule is live.
+  3. approve, and the PyPI publish succeeds → the PyPI publisher matches.
+
+  Only once all three hold, delete any leftover `PYPI_TOKEN` / `TESTPYPI_TOKEN` from
+  Settings → Secrets — they are the fallback until then. The local `.pypirc` token
+  described at the end of this file is a different mechanism and stays.
+
+> **Trap: a missing environment fails open.** Per GitHub's documentation, running a
+> workflow that references an environment which does not exist *creates* it — with no
+> protection rules. So skipping step 1 does not raise an error: it publishes straight to
+> PyPI with no approval prompt and no sign the gate was bypassed. Create them
+> deliberately rather than letting the first release create them for you.
 
 ### Mock Release
 
@@ -147,7 +201,10 @@ git tag -d v0.0.2
 git push origin --delete v0.0.2
 ```
 
-### TestPyPI (local mock releases only)
+### TestPyPI API token (local mock releases only)
+
+Unrelated to trusted publishing above: this token is for `pixi run testpypi` from
+your own machine, which uploads directly rather than through GitHub Actions.
 
 - [ ] In account settings on [testpypi.org](https://test.pypi.org/), go to the API tokens
       section and select "Add API token"

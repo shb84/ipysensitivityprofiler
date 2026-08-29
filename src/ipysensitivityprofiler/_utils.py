@@ -1,5 +1,3 @@
-from typing import List, Optional
-
 import bqplot as bq
 import ipywidgets as W
 import numpy as np
@@ -85,6 +83,7 @@ def create_grid(
                         [ 0,  1,  2],
                         [ 0,  1,  3],
                         [ 0,  1,  5]]
+
     """
     ##########
     # Checks #
@@ -118,12 +117,19 @@ def create_grid(
     return x
 
 
-def create_batches(n: int, m: int) -> List[List[int]]:
+def create_batches(n: int, m: int) -> list[list[int]]:
     """Create n batches containing m examples each.
 
     Given an array x of shape (n * m, -1), this method
     returns a list of list in which each list are the
     indices of x for each batch.
+
+    Args:
+        n: int
+            Number of batches.
+
+        m: int
+            Number of examples per batch.
 
     Example usage:
 
@@ -152,13 +158,14 @@ def create_batches(n: int, m: int) -> List[List[int]]:
         list
             List of row indices corresponding to one
             grid permutation.
+
     """
     batches = []
 
     for i in range(n):
         start = i * m
         stop = (i + 1) * m
-        batch = [k for k in range(start, stop)]
+        batch = list(range(start, stop))
         batches.append(batch)
 
     return batches
@@ -168,13 +175,15 @@ def make_figure(
     N: int,
     num_x_ticks: int = 3,
     num_y_ticks: int = 3,
-    tick_style: dict = {"font-size": 10},
-    xmin: Optional[float] = None,
-    xmax: Optional[float] = None,
-    ymin: Optional[float] = None,
-    ymax: Optional[float] = None,
+    tick_style: dict | None = None,
+    xmin: float | None = None,
+    xmax: float | None = None,
+    ymin: float | None = None,
+    ymax: float | None = None,
 ) -> bq.Figure:
     """Create initial figure for profiler trait (data will be replaced)."""
+    if tick_style is None:
+        tick_style = {"font-size": 10}
     x = np.array([0, 1])
     y = np.array([0, 1])
     x0 = np.array([0.5])
@@ -238,8 +247,8 @@ def make_grid(
     n_x: int,
     n_y: int,
     N: int,
-    width: Optional[int] = None,
-    height: Optional[int] = None,
+    width: int | None = None,
+    height: int | None = None,
 ) -> W.GridspecLayout:
     """Create grid layout of specified width and height."""
     if width:

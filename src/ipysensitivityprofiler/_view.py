@@ -1,5 +1,6 @@
 import pathlib as pl
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import bqplot as bq
 import ipywidgets as W
@@ -69,15 +70,15 @@ class View(W.Box):
         allow_none=False, help="The value of the outputs evaluates at x0"
     )
 
-    xlabels: List[str] = T.List(allow_none=False, help="The name of each input")  # type: ignore [assignment]
-    ylabels: List[str] = T.List(allow_none=False, help="The name of each output")  # type: ignore [assignment]
+    xlabels: list[str] = T.List(allow_none=False, help="The name of each input")  # type: ignore [assignment]
+    ylabels: list[str] = T.List(allow_none=False, help="The name of each output")  # type: ignore [assignment]
 
     data: Data = T.Instance(klass=Data, help="object in charge of updating data")  # type: ignore [assignment]
     grid: W.GridspecLayout = T.Instance(
         klass=W.GridspecLayout, help="Grid containing all figures"
     )
 
-    _batches: List[List[int]] = T.List(allow_none=True)  # type: ignore [assignment]
+    _batches: list[list[int]] = T.List(allow_none=True)  # type: ignore [assignment]
 
     #################
     # Instantiation #
@@ -90,7 +91,10 @@ class View(W.Box):
         # Links #
         #########
 
-        T.dlink((self, "x0"), (self, "y0"), lambda x0: self.predict(x0))
+        # NOTE: the lambda defers the lookup of `self.predict`, which is itself a
+        # trait that can be reassigned at runtime; binding it eagerly would freeze
+        # the link to whatever model happens to be set right now.
+        T.dlink((self, "x0"), (self, "y0"), lambda x0: self.predict(x0))  # ruff: ignore[unnecessary-lambda]
         T.link((self, "predict"), (self.data, "predict"))
 
         ##############
@@ -174,12 +178,12 @@ class View(W.Box):
     #     return y0
 
     @T.default("xlabels")
-    def _create_xlabels(self) -> List[str]:
+    def _create_xlabels(self) -> list[str]:
         n_x = self.xmin.size
         return [f"x{i}" for i in range(n_x)]
 
     @T.default("ylabels")
-    def _create_ylabels(self) -> List[str]:
+    def _create_ylabels(self) -> list[str]:
         n_y = self.ymin.size
         return [f"y{i}" for i in range(n_y)]
 
@@ -207,7 +211,7 @@ class View(W.Box):
         return grid
 
     @T.default("_batches")
-    def _create_batches(self) -> List[List[int]]:
+    def _create_batches(self) -> list[list[int]]:
         batches = create_batches(self.data.n_x, self.resolution)
         return batches
 
@@ -230,7 +234,7 @@ class View(W.Box):
         return height
 
     @T.validate("xlabels")
-    def _validate_xlabels(self, proposal: T.Bunch) -> List[str]:
+    def _validate_xlabels(self, proposal: T.Bunch) -> list[str]:
         xlabels = proposal.value
         if not xlabels:
             return self._create_xlabels()
@@ -238,7 +242,7 @@ class View(W.Box):
         return xlabels
 
     @T.validate("ylabels")
-    def _validate_ylabels(self, proposal: T.Bunch) -> List[str]:
+    def _validate_ylabels(self, proposal: T.Bunch) -> list[str]:
         ylabels = proposal.value
         if not ylabels:
             return self._create_ylabels()
@@ -286,9 +290,7 @@ class View(W.Box):
 
     # TODO: need to add white background to grid boxes, else pictures are transparent
 
-    def save_png(
-        self, xlabel: str, ylabel: str, filename: Optional[str] = None
-    ) -> None:
+    def save_png(self, xlabel: str, ylabel: str, filename: str | None = None) -> None:
         """Save figure as PNG.
 
         Args:

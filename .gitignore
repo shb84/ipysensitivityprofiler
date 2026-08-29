@@ -165,4 +165,18 @@ cython_debug/
 # doit 
 *.db.db
 *.db
-*.envs 
+*.envs
+
+# pixi
+.pixi/
+
+# Local plans / scratch (never committed)
+.tmp/
+
+# Editors
+.idea/
+.vscode/
+
+# OpenMDAO example artifacts
+notebooks/**/n2.html
+notebooks/**/*_out/

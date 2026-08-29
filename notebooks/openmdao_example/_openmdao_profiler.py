@@ -2,29 +2,31 @@
 
 Module in charge of interfacing with an openmdao model.
 """
-from openmdao.api import Problem
-from openmdao.utils.units import convert_units
-from typing import List, Optional, Tuple
 
 import numpy as np
+from openmdao.api import Problem
+from openmdao.utils.units import convert_units
 
 from ipysensitivityprofiler._model import Profiler, profiler
 from ipysensitivityprofiler._view import DEFAULT_RESOLUTION, DEFAULT_WIDTH
 
 
 def openmdao_profiler(
-    problem: Problem,  
-    inputs: List[Tuple[str, float, float, Optional[str]]],
-    outputs: List[Tuple[str, float, float, Optional[str]]],
-    defaults: Optional[List[Tuple[str, float, Optional[str]]]] = None,
+    problem: Problem,
+    inputs: list[tuple[str, float, float, str | None]],
+    outputs: list[tuple[str, float, float, str | None]],
+    defaults: list[tuple[str, float, str | None]] | None = None,
     resolution: int = DEFAULT_RESOLUTION,
     width: int = DEFAULT_WIDTH,
-    height: Optional[int] = None,
+    height: int | None = None,
 ) -> Profiler:
     """Create openmdao profiler for specified input/output labels.
 
     Parameters
     ----------
+    problem: Problem
+        OpenMDAO problem to profile. It is run once per profiled point.
+
     inputs: List[Tuple[str, float, float, str | None]]
         Inputs and associated bounds to display.
         Format: [(name, min, max, units)]
@@ -46,6 +48,7 @@ def openmdao_profiler(
 
     height: int, optional
          Height of each plot. Default is None (match width).
+
     """
     if height is None:
         height = width
@@ -81,7 +84,7 @@ def openmdao_profiler(
     x_max = np.array(x_max)
 
     # Convert defaults to dictionary for lookup
-    items = defaults if defaults else ()
+    items = defaults or ()
     defaults = (
         {}
         if defaults is None

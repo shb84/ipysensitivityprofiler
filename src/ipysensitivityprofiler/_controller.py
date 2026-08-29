@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Dict, List
+from typing import Any
 
 import bqplot as bq
 import ipywidgets as W
@@ -38,7 +38,7 @@ def _update_x0(view: View, index: int, proposal: T.Bunch) -> None:
         view.x0 = x0
 
 
-def _create_sliders(view: View) -> List[W.FloatSlider]:
+def _create_sliders(view: View) -> list[W.FloatSlider]:
     sliders = []
     for i in range(view.data.n_x):
         slider = W.FloatSlider(
@@ -52,8 +52,8 @@ def _create_sliders(view: View) -> List[W.FloatSlider]:
     return sliders
 
 
-def _create_range_sliders(view: View) -> Dict[str, List[W.FloatRangeSlider]]:
-    sliders: Dict[str, List[W.FloatRangeSlider]] = {"x": [], "y": []}
+def _create_range_sliders(view: View) -> dict[str, list[W.FloatRangeSlider]]:
+    sliders: dict[str, list[W.FloatRangeSlider]] = {"x": [], "y": []}
 
     for i in range(view.data.n_y):
         slider = W.FloatRangeSlider(
@@ -100,6 +100,7 @@ class Controller(W.VBox):
 
         sliders: List[W.FloatSlider]
             Sliders to control input values (and automatically update view).
+
     """
 
     def __init__(self, view: View, **kwargs: Any):

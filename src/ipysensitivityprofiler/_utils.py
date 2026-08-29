@@ -4,16 +4,60 @@ import numpy as np
 from numpy.typing import NDArray
 
 DOT_COLOR = "#CD0000"
-LINE_COLOR = "#797a7a"
 LINE_WIDTH = 3
-LINE_STYLE = [
+
+# Categorical palette, assigned to models in this fixed order. Validated for the
+# adjacent-pair gates in both modes: worst CVD dE 9.1 light / 8.4 dark (>=8 target),
+# worst normal-vision dE 19.6 light / 19.3 dark (>=15 floor). Do not reorder -- the
+# ordering is what makes it colorblind-safe, not cosmetics.
+DEFAULT_COLORS = [
+    "#2a78d6",  # blue
+    "#eb6834",  # orange
+    "#1baf7a",  # aqua
+    "#eda100",  # yellow
+    "#e87ba4",  # magenta
+    "#008300",  # green
+    "#4a3aa7",  # violet
+    "#e34948",  # red
+]
+
+# The same eight hues stepped for a dark surface. Pass as `colors=` when running
+# under a dark notebook theme; aqua, yellow and magenta fall below 3:1 contrast on
+# a light surface and these do not.
+DARK_COLORS = [
+    "#3987e5",
+    "#d95926",
+    "#199e70",
+    "#c98500",
+    "#d55181",
+    "#008300",
+    "#9085e9",
+    "#e66767",
+]
+
+# Secondary encoding, so models stay distinguishable without relying on hue alone
+# (colorblind readers, greyscale printing, forced-colors mode).
+DEFAULT_LINE_STYLES = [
     "solid",
     "dashed",
     "dotted",
     "dash_dotted",
-]  # TODO: handle more than 4 curves and add legends
+]
+
+LINE_COLOR = DEFAULT_COLORS[0]  # retained for backwards compatibility
+LINE_STYLE = DEFAULT_LINE_STYLES  # retained for backwards compatibility
 FIG_MARGIN = dict(top=45, bottom=45, left=45, right=45)
 BETWEEN_SPACE = 5
+
+
+def grid_size(n_x: int, resolution: int) -> int:
+    """Number of rows in a grid built by :py:func:`create_grid`.
+
+    Callers that must pre-size buffers for a fixed number of evaluation
+    points (such as an OpenMDAO problem's ``num_nodes``) should size
+    them with this.
+    """
+    return n_x * resolution + 1
 
 
 def create_grid(
@@ -41,7 +85,8 @@ def create_grid(
 
     Returns:
         NDArray
-            Array of shape (resolution * n, n)
+            Array of shape (resolution * n + 1, n). The first ``resolution * n``
+            rows sweep one input at a time; the final row is ``x0`` itself.
 
     Example:
         .. code-block:: python
@@ -82,16 +127,17 @@ def create_grid(
                         [ 0,  1,  1],
                         [ 0,  1,  2],
                         [ 0,  1,  3],
-                        [ 0,  1,  5]]
+                        [ 0,  1,  5],
+                        [ 0,  1,  2]]  # <- x0
 
     """
     ##########
     # Checks #
     ##########
 
-    x0 = x0.ravel()
-    xmax = xmax.ravel()
-    xmin = xmin.ravel()
+    x0 = np.asarray(x0, dtype=np.float64).ravel()
+    xmin = np.asarray(xmin, dtype=np.float64).ravel()
+    xmax = np.asarray(xmax, dtype=np.float64).ravel()
 
     assert x0.size == xmin.size == xmax.size
 
@@ -99,7 +145,6 @@ def create_grid(
     # Setup #
     #########
 
-    x0 = x0.reshape((1, -1))
     n = x0.size
     m = resolution
 
@@ -107,7 +152,9 @@ def create_grid(
     # Data #
     ########
 
-    x = np.tile(x0, (n * m, 1))
+    # One extra row holds x0 itself, so the value at the profiled point comes back
+    # from the same model call as the curves instead of costing a second one.
+    x = np.tile(x0.reshape((1, -1)), (grid_size(n, m), 1))
 
     for i in range(n):
         start = i * m
@@ -117,58 +164,26 @@ def create_grid(
     return x
 
 
-def create_batches(n: int, m: int) -> list[list[int]]:
-    """Create n batches containing m examples each.
+def batch_slice(index: int, resolution: int) -> slice:
+    """Return the rows of a grid that sweep input `index`.
 
-    Given an array x of shape (n * m, -1), this method
-    returns a list of list in which each list are the
-    indices of x for each batch.
-
-    Args:
-        n: int
-            Number of batches.
-
-        m: int
-            Number of examples per batch.
-
-    Example usage:
-
-        n=3
-        m=5
-        x = np.arange(n*m,)
-
-        batches = create_batches(n, m)
-
-        for batch in batches:
-            print(x[batch])
-
-    This method is meant as a support function for
-    the sensitivity profilers. It helps collect the
-    indices associated with the data for each curve
-    in the curve.
+    Grids from :py:func:`create_grid` lay out one contiguous sweep per input, so the
+    rows for a given input are a plain slice. Using a slice rather than a list of
+    indices keeps the lookup a view instead of a copy, which matters because this sits
+    in the redraw path.
 
     Args:
-        n: int, optional
-            Number of batches
+        index: int
+            Index of the input variable.
 
-        n: int, optional
-            Number of examples per batch
+        resolution: int
+            Number of points per sweep.
 
     Returns:
-        list
-            List of row indices corresponding to one
-            grid permutation.
-
+        slice
+            Row slice corresponding to one grid permutation.
     """
-    batches = []
-
-    for i in range(n):
-        start = i * m
-        stop = (i + 1) * m
-        batch = list(range(start, stop))
-        batches.append(batch)
-
-    return batches
+    return slice(index * resolution, (index + 1) * resolution)
 
 
 def make_figure(
@@ -180,25 +195,48 @@ def make_figure(
     xmax: float | None = None,
     ymin: float | None = None,
     ymax: float | None = None,
+    xs: bq.LinearScale | None = None,
+    ys: bq.LinearScale | None = None,
+    colors: list[str] | None = None,
+    line_styles: list[str] | None = None,
+    labels: list[str] | None = None,
+    show_legend: bool = False,
 ) -> bq.Figure:
-    """Create initial figure for profiler trait (data will be replaced)."""
+    """Create initial figure for profiler trait (data will be replaced).
+
+    Pass `xs` / `ys` to share a scale with the other figures in the same
+    column / row; omit them and the figure owns a private scale built
+    from the bounds.
+
+    `colors` and `line_styles` are assigned to models by position and
+    cycled if shorter than `N`, so each model is distinguishable by hue
+    and by stroke.
+    """
     if tick_style is None:
         tick_style = {"font-size": 10}
+    if colors is None:
+        colors = DEFAULT_COLORS
+    if line_styles is None:
+        line_styles = DEFAULT_LINE_STYLES
     x = np.array([0, 1])
     y = np.array([0, 1])
     x0 = np.array([0.5])
     y0 = np.array([0.5])
-    xs = bq.LinearScale(min=xmin, max=xmax)
-    ys = bq.LinearScale(min=ymin, max=ymax)
+    if xs is None:
+        xs = bq.LinearScale(min=xmin, max=xmax)
+    if ys is None:
+        ys = bq.LinearScale(min=ymin, max=ymax)
     marks = []
     for k in range(N):
         line = bq.Lines(
             x=x,
             y=y,
             scales={"x": xs, "y": ys},
-            colors=[LINE_COLOR],
+            colors=[colors[k % len(colors)]],
             stroke_width=LINE_WIDTH,
-            line_style=LINE_STYLE[k],
+            line_style=line_styles[k % len(line_styles)],
+            labels=[labels[k]] if labels else [],
+            display_legend=show_legend,
         )
         dot = bq.marks.Scatter(
             x=x0,
@@ -249,8 +287,20 @@ def make_grid(
     N: int,
     width: int | None = None,
     height: int | None = None,
+    xscales: list[bq.LinearScale] | None = None,
+    yscales: list[bq.LinearScale] | None = None,
+    colors: list[str] | None = None,
+    line_styles: list[str] | None = None,
+    labels: list[str] | None = None,
+    show_legend: bool = False,
 ) -> W.GridspecLayout:
-    """Create grid layout of specified width and height."""
+    """Create grid layout of specified width and height.
+
+    Every figure in column `j` shows the same input and every figure in
+    row `i` the same output, so `xscales` / `yscales` let one scale per
+    column / row be shared across the whole grid rather than each cell
+    owning a private pair.
+    """
     if width:
         fig_width = f"{width / n_x - BETWEEN_SPACE}px"
     if height:
@@ -258,7 +308,17 @@ def make_grid(
     grid = W.GridspecLayout(n_y, n_x)
     for j in range(n_x):
         for i in range(n_y):
-            grid[i, j] = make_figure(N)
+            grid[i, j] = make_figure(
+                N,
+                xs=xscales[j] if xscales else None,
+                ys=yscales[i] if yscales else None,
+                colors=colors,
+                line_styles=line_styles,
+                labels=labels,
+                # Every cell shares one model -> style mapping, so a legend in
+                # each would be n_x * n_y copies of the same key. One is enough.
+                show_legend=show_legend and i == 0 and j == 0,
+            )
             if width:
                 grid[i, j].layout.width = fig_width
             if height:

@@ -15,7 +15,7 @@ def _update_ylim(view: View, index: int, proposal: T.Bunch) -> None:
         ymax = view.ymax.tolist()
         ymin[index] = proposal.new[0]
         ymax[index] = proposal.new[1]
-        with view.hold_sync():
+        with view.hold_trait_notifications():
             view.ymax = ymax
             view.ymin = ymin
 
@@ -26,15 +26,15 @@ def _update_xlim(view: View, index: int, proposal: T.Bunch) -> None:
         xmax = view.xmax.tolist()
         xmin[index] = proposal.new[0]
         xmax[index] = proposal.new[1]
-        with view.hold_sync():
+        with view.hold_trait_notifications():
             view.xmax = xmax
             view.xmin = xmin
 
 
 def _update_x0(view: View, index: int, proposal: T.Bunch) -> None:
     if proposal.new != proposal.old:
-        x0 = view.x0.tolist()
-        x0[0][index] = proposal.new
+        x0 = view.x0.copy()
+        x0[0, index] = proposal.new
         view.x0 = x0
 
 

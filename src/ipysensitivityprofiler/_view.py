@@ -9,7 +9,13 @@ import traitlets as T
 import traittypes as TT
 
 from ._data import Data
-from ._utils import create_batches, create_grid, make_grid
+from ._utils import (
+    DEFAULT_COLORS,
+    DEFAULT_LINE_STYLES,
+    batch_slice,
+    create_grid,
+    make_grid,
+)
 
 DEFAULT_RESOLUTION = 25
 DEFAULT_WIDTH = 300
@@ -78,7 +84,19 @@ class View(W.Box):
         klass=W.GridspecLayout, help="Grid containing all figures"
     )
 
-    _batches: list[list[int]] = T.List(allow_none=True)  # type: ignore [assignment]
+    colors: list[str] = T.List(
+        help="Line color per model, by position. Cycled if shorter than the number "
+        "of models. Defaults to a colorblind-safe categorical palette."
+    )  # type: ignore [assignment]
+    line_styles: list[str] = T.List(
+        help="Line style per model, by position. Cycled if shorter than the number "
+        "of models. One of solid, dashed, dotted, dash_dotted."
+    )  # type: ignore [assignment]
+    model_labels: list[str] = T.List(help="Legend label per model")  # type: ignore [assignment]
+    show_legend: bool = T.Bool(help="Show a legend keying models to their style")  # type: ignore [assignment]
+
+    _xscales: list[bq.LinearScale] = T.List(help="One shared x scale per column")  # type: ignore [assignment]
+    _yscales: list[bq.LinearScale] = T.List(help="One shared y scale per row")  # type: ignore [assignment]
 
     #################
     # Instantiation #
@@ -91,18 +109,22 @@ class View(W.Box):
         # Links #
         #########
 
-        # NOTE: the lambda defers the lookup of `self.predict`, which is itself a
-        # trait that can be reassigned at runtime; binding it eagerly would freeze
-        # the link to whatever model happens to be set right now.
-        T.dlink((self, "x0"), (self, "y0"), lambda x0: self.predict(x0))  # ruff: ignore[unnecessary-lambda]
-        T.link((self, "predict"), (self.data, "predict"))
+        # `predict` flows one way, View -> Data. Nothing assigns `data.predict`
+        # independently, and a bidirectional `link` fires Data's observer twice on
+        # setup, costing an extra evaluation of the whole grid.
+        T.dlink((self, "predict"), (self.data, "predict"))
+
+        # Every path that invalidates the plot -- x0, the input bounds, resolution,
+        # a new model -- lands on `data.y`, so that is the one thing worth watching.
+        # Observing it here rather than observing `x0` also removes the reliance on
+        # observer registration order to get `_update_data` to run before the redraw.
+        self.data.observe(self._on_y_changed, "y")
 
         ##############
         # Initialize #
         ##############
 
-        self._update_data()
-        self._update_figs()
+        self._on_y_changed()
         self._update_lims()
         self._update_labels()
 
@@ -112,8 +134,11 @@ class View(W.Box):
 
         self.observe(self._update_lims, ["xmin", "xmax", "ymin", "ymax"])
         self.observe(self._update_data, ["x0", "xmin", "xmax", "resolution"])
-        self.observe(self._update_figs, ["x0", "data"])
         self.observe(self._update_labels, ["xlabels", "ylabels"])
+        self.observe(
+            self._update_styles,
+            ["colors", "line_styles", "model_labels", "show_legend"],
+        )
 
         self.children = [self.grid]
 
@@ -126,37 +151,56 @@ class View(W.Box):
             x0=self.x0, xmin=self.xmin, xmax=self.xmax, resolution=self.resolution
         )
 
+    def _on_y_changed(self, *_: Any) -> None:
+        """Pick the profiled point out of the grid, then redraw."""
+        self.y0 = self.data.y[-1:]  # create_grid puts x0 in the final row
+        self._update_figs()
+
     def _update_figs(self, *_: Any) -> None:
         with self.grid.hold_sync():
             for j in range(self.data.n_x):
-                batch = self._batches[
-                    j
-                ]  # Data is a huge grid. These are indices of relevant subset.
+                # Data is a huge grid. This is the contiguous subset for input j --
+                # a slice rather than a list of indices, so it stays a view.
+                rows = batch_slice(j, self.resolution)
+                x_line = self.data.x[rows, j]
                 for i in range(self.data.n_y):
-                    k = 0
-                    for mark in self.grid[
-                        i, j
-                    ].marks:  # [line1, cursor1, line2, cursor2, ...]
-                        if isinstance(mark, bq.marks.Lines):
-                            line = mark
-                            line.x = self.data.x[batch, j]
-                            line.y = self.data.y[batch, i, k]
-                        if isinstance(mark, bq.marks.Scatter):
-                            dot = mark
-                            dot.x = self.x0[0, j : j + 1]
-                            dot.y = self.y0[0, i : i + 1, k]
-                            k += 1
+                    # marks are built interleaved: [line1, cursor1, line2, cursor2, ...]
+                    marks = self.grid[i, j].marks
+                    pairs = zip(marks[0::2], marks[1::2], strict=True)
+                    for k, (line, dot) in enumerate(pairs):
+                        line.x = x_line
+                        line.y = self.data.y[rows, i, k]
+                        dot.x = self.x0[0, j : j + 1]
+                        dot.y = self.y0[0, i : i + 1, k]
 
-    def _update_lims(self, *_: Any) -> None:
+    def _update_styles(self, *_: Any) -> None:
+        """Re-apply the per-model colors, strokes and legend keys."""
+        colors = self.colors or DEFAULT_COLORS
+        styles = self.line_styles or DEFAULT_LINE_STYLES
         with self.grid.hold_sync():
             for j in range(self.data.n_x):
                 for i in range(self.data.n_y):
-                    self.grid[i, j].axes[0].scale.min = self.xmin[j]
-                    self.grid[i, j].axes[0].scale.max = self.xmax[j]
-                    self.grid[i, j].axes[1].scale.min = self.ymin[i]
-                    self.grid[i, j].axes[1].scale.max = self.ymax[i]
+                    lines = self.grid[i, j].marks[0::2]
+                    for k, line in enumerate(lines):
+                        line.colors = [colors[k % len(colors)]]
+                        line.line_style = styles[k % len(styles)]
+                        if self.model_labels:
+                            line.labels = [self.model_labels[k]]
+                        # One legend for the whole grid; see `make_grid`.
+                        line.display_legend = self.show_legend and i == 0 and j == 0
 
-    def _update_labels(self) -> None:
+    def _update_lims(self, *_: Any) -> None:
+        # Each scale is shared by a whole column (or row), so this is O(n_x + n_y)
+        # writes rather than one per cell.
+        with self.grid.hold_sync():
+            for j, scale in enumerate(self._xscales):
+                scale.min = float(self.xmin[j])
+                scale.max = float(self.xmax[j])
+            for i, scale in enumerate(self._yscales):
+                scale.min = float(self.ymin[i])
+                scale.max = float(self.ymax[i])
+
+    def _update_labels(self, *_: Any) -> None:
         with self.grid.hold_sync():
             for j in range(self.data.n_x):
                 for i in range(self.data.n_y):
@@ -199,21 +243,53 @@ class View(W.Box):
         )
         return data
 
+    @T.default("colors")
+    def _create_colors(self) -> list[str]:
+        return list(DEFAULT_COLORS)
+
+    @T.default("line_styles")
+    def _create_line_styles(self) -> list[str]:
+        return list(DEFAULT_LINE_STYLES)
+
+    @T.default("model_labels")
+    def _create_model_labels(self) -> list[str]:
+        return [f"model {k + 1}" for k in range(self.data.N)]
+
+    @T.default("show_legend")
+    def _create_show_legend(self) -> bool:
+        # A single curve needs no key; the axis labels already name it.
+        return bool(self.data.N > 1)
+
+    @T.default("_xscales")
+    def _create_xscales(self) -> list[bq.LinearScale]:
+        return [
+            bq.LinearScale(min=float(self.xmin[j]), max=float(self.xmax[j]))
+            for j in range(self.data.n_x)
+        ]
+
+    @T.default("_yscales")
+    def _create_yscales(self) -> list[bq.LinearScale]:
+        return [
+            bq.LinearScale(min=float(self.ymin[i]), max=float(self.ymax[i]))
+            for i in range(self.data.n_y)
+        ]
+
     @T.default("grid")
-    def _create_view(self) -> np.ndarray:
+    def _create_view(self) -> W.GridspecLayout:
         grid = make_grid(
             self.data.n_x,
             self.data.n_y,
             self.data.N,
             self.width,
             self.height,
+            xscales=self._xscales,
+            yscales=self._yscales,
+            colors=self.colors,
+            line_styles=self.line_styles,
+            labels=self.model_labels,
+            show_legend=self.show_legend,
         )
         return grid
-
-    @T.default("_batches")
-    def _create_batches(self) -> list[list[int]]:
-        batches = create_batches(self.data.n_x, self.resolution)
-        return batches
 
     ############
     # Validate #
@@ -223,7 +299,7 @@ class View(W.Box):
     def _validate_width(self, proposal: T.Bunch) -> int:
         width = proposal.value
         if width is None:
-            return DEFAULT_WIDTH * self.data.n_y
+            return DEFAULT_WIDTH * self.data.n_x
         return width
 
     @T.validate("height")
@@ -253,36 +329,34 @@ class View(W.Box):
     def _validate_y0(self, proposal: T.Bunch) -> np.ndarray:
         array = proposal.value
         assert array.ndim == self.data.y.ndim
-        return array.astype(np.float64)
+        return np.asarray(array, dtype=np.float64)
 
     @T.validate("x0")
     def _validate_x0(self, proposal: T.Bunch) -> np.ndarray:
         array = proposal.value
         if array is None:
             return self._create_x0()
-        array = array.reshape((1, -1))
-        assert array.ndim == self.data.x.ndim
-        return array.astype(np.float64)
+        return np.asarray(array, dtype=np.float64).reshape((1, -1))
 
     @T.validate("xmin")
     def _validate_xmin(self, proposal: T.Bunch) -> np.ndarray:
         array = proposal.value
-        return array.astype(np.float64).ravel()
+        return np.asarray(array, dtype=np.float64).ravel()
 
     @T.validate("xmax")
     def _validate_xmax(self, proposal: T.Bunch) -> np.ndarray:
         array = proposal.value
-        return array.astype(np.float64).ravel()
+        return np.asarray(array, dtype=np.float64).ravel()
 
     @T.validate("ymin")
     def _validate_ymin(self, proposal: T.Bunch) -> np.ndarray:
         array = proposal.value
-        return array.astype(np.float64).ravel()
+        return np.asarray(array, dtype=np.float64).ravel()
 
     @T.validate("ymax")
     def _validate_ymax(self, proposal: T.Bunch) -> np.ndarray:
         array = proposal.value
-        return array.astype(np.float64).ravel()
+        return np.asarray(array, dtype=np.float64).ravel()
 
     ###########
     # Methods #
@@ -303,7 +377,8 @@ class View(W.Box):
             filename: str, optional
                 File name to save to. Default is "profiler_{xlabel}_vs_{ylabel}.png"
         """
-        filename = f"profiler_{xlabel}_vs_{ylabel}.png"
+        if filename is None:
+            filename = f"profiler_{xlabel}_vs_{ylabel}.png"
         file = pl.Path(filename)
         j = self.xlabels.index(xlabel)
         i = self.ylabels.index(ylabel)

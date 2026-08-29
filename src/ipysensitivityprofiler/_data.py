@@ -1,4 +1,5 @@
-from typing import Any, Callable, List
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import traitlets as T
@@ -13,8 +14,8 @@ class Data(T.HasTraits):
     prediction models as needed.
     """
 
-    xlabels: List[str] = T.List(allow_none=False)  # type: ignore [assignment]
-    ylabels: List[str] = T.List(allow_none=False)  # type: ignore [assignment]
+    xlabels: list[str] = T.List(allow_none=False)  # type: ignore [assignment]
+    ylabels: list[str] = T.List(allow_none=False)  # type: ignore [assignment]
     predict: Callable = T.Callable(
         allow_none=False,
         help="Callback that calls user provided models to update data as needed.",
@@ -26,7 +27,7 @@ class Data(T.HasTraits):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(self, **kwargs)
 
-        def update(change: T.Bunch) -> None:
+        def update(_change: T.Bunch) -> None:
             self.y = self.predict(self.x)
 
         self.observe(update, "predict")
@@ -44,18 +45,14 @@ class Data(T.HasTraits):
         return len(self.ylabels)
 
     @property
-    def N(self) -> int:
+    def N(self) -> int:  # ruff: ignore[invalid-function-name]  (public API name kept for backwards compat)
         """Number of models (i.e. number of lines on plot)."""
         return self.y.shape[2]
 
     @T.validate("x")
     def _validate_x(self, proposal: T.Bunch) -> NDArray:
         x = proposal.value
-        if (
-            x.ndim != 2  # noqa: PLR2004
-            or x.shape[1] != self.n_x
-            or x.dtype != np.float64
-        ):
+        if x.ndim != 2 or x.shape[1] != self.n_x or x.dtype != np.float64:
             return x.astype(np.float64).reshape(-1, self.n_x)  # require shape (m, n_x)
         assert x.shape[1] == self.n_x
         assert x.dtype == np.float64
@@ -64,7 +61,7 @@ class Data(T.HasTraits):
     @T.validate("y")
     def _validate_y(self, proposal: T.Bunch) -> NDArray:
         y = proposal.value
-        assert y.ndim == 3  # noqa: PLR2004 # require shape (m, n_y, N)
+        assert y.ndim == 3  # require shape (m, n_y, N)
         assert y.shape[1] == self.n_y
         assert y.dtype == np.float64
         return y

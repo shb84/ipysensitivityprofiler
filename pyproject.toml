@@ -1,105 +1,43 @@
+[project]
+name = "ipysensitivityprofiler"
+dynamic = ["version"]
+authors = [{name = "Steven H. Berguin", email = "stevenberguin@gmail.com"}]
+description = "Jupyter Widgets for visualizing local sensitivity profiles of functions."
+readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Framework :: Jupyter",
+]
+dependencies = ["numpy", "bqplot", "ipywidgets", "traitlets"]
+
+[project.urls]
+Documentation = "https://shb84.github.io/ipysensitivityprofiler/"
+Homepage = "https://github.com/shb84/ipysensitivityprofiler"
+Issues = "https://github.com/shb84/ipysensitivityprofiler/issues"
+
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-[project]
-name = "ipysensitivityprofiler"
-version = "0.0.1"
-authors = [
-  { name="Steven H. Berguin", email="stevenberguin@gmail.com" },
-]
-description = "Jupyter Widgets for visualizing local sensitivity profiles of functions."
-readme = "README.md"
-requires-python = ">=3.8"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-]
-dependencies = [
-  "numpy", 
-  "bqplot",
-  "jupyter",
-  "jupyterlab",
-  "traitlets",
-  "widgetsnbextension"
-]
-
-[project.optional-dependencies]
-lint = [
-    "black",
-    "docformatter",
-    "lxml",
-    "mypy",
-    "ruff",
-    "pylint",
-]
-test = [
-    "nbmake",
-    "pytest",
-    "pytest-cov",
-    "pytest-html",
-]
-build = [
-    "build",
-    "sphinx",  # to build docs 
-    "sphinx_rtd_theme",
-    "sphinx-toolbox",
-    "pip", 
-]
-release = [
-    "twine",  # if pkg to be released on pypi
-]
-
-[project.urls]
-Documentation = "https://shb84.github.io/ipysensitivityprofiler/"
-Homepage = "https://github.com/shb84/ipysensitivityprofiler.git"
-Issues = "https://github.com/shb84/ipysensitivityprofiler/issues"
+# setuptools ###################################################################
+[tool.setuptools.dynamic]
+version = {attr = "ipysensitivityprofiler.__version__"}
 
 [tool.setuptools.packages.find]
-where = ["src"]  # list of folders that contain the packages (["."] by default)
-include = ["ipysensitivityprofiler*"]  # package names should match these glob patterns (["*"] by default)
-exclude = ["ipysensitivityprofiler.tests*"]  # exclude packages matching these glob patterns (empty by default)
-namespaces = false  # to disable scanning PEP 420 namespaces (true by default)
+where = ["src"]
+include = ["ipysensitivityprofiler*"]
+exclude = ["ipysensitivityprofiler.tests*"]
+namespaces = false
 
-[tool.ruff]
-lint.select = [
-  "ANN",  # flake8-annotations
-  "D",  # pydocstyle
-  "E",  # pycodestyle errors
-  "F",  # pyflakes
-  "I",  # isort
-  "PL", # pylint
-  "UP", # pyupgra
-  "W",  # pycodestyle warnings
-  "NPY", # NumPy-specific rules
-]
-lint.ignore = [
-  "ANN101", # Missing type annotation for `self` in method
-  "ANN102", # Missing type annotation for `cls` in classmethod
-  "ANN002",  # Missing type annotation for `*args`
-  "ANN003",  # Missing type annotation for `**kwargs`
-  "ANN204",  # Missing return type annotation for special method `__init__`
-  "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed in `**kwargs`
-  "PLR0913",  # Too many arguments in function definition
-  "E501", # if it doesn't bother black
-  "D105",
-  "D107",
-  "D205",
-  "D209",
-  "D400",
-  "D203",
-  "D213", # pydocstyle opinion
-  "D417", # FIXME Missing argument description
-  "D413", # Missing blank line after last section ("Parameters")
-]
-cache-dir = "build/.cache/ruff"
-
-
+# mypy #########################################################################
 [tool.mypy]
 cache_dir = "build/.cache/mypy"
 sqlite_cache = true
-# settings
 allow_redefinition = true
 check_untyped_defs = true
 disallow_untyped_defs = true
@@ -111,92 +49,89 @@ warn_return_any = false
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = [
-  "openmdao",
-]
+module = ["openmdao"]
 ignore_missing_imports = true
 
-########
-# pixi #
-########
+# ruff #########################################################################
+[tool.ruff]
+target-version = "py310"
+cache-dir = "build/.cache/ruff"
+include = [
+  "docs/**/*.py",
+  "notebooks/**/*.py",
+  "notebooks/**/*.ipynb",
+  "src/**/*.py",
+  "tests/**/*.py",
+]
+line-length = 88
+preview = true
 
-# pixi docs: https://pixi.sh/latest/
-[tool.pixi.project]
-channels = ["conda-forge"]
-platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+[tool.ruff.format]
+line-ending = "lf"
 
-# [tool.pixi.system-requirements]
-# linux="4.18"  # optional (use if needed: https://prefix.dev/docs/pixi/configuration#the-system-requirements-table)
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "ANN001",
+  "ANN002",
+  "ANN003",
+  "ANN401",  # widget/traitlets callbacks legitimately take **kwargs: Any
+  "ANN201",
+  "ANN202",
+  "ANN204",
+  "ARG002",
+  "B007",
+  "C408",
+  "COM812",
+  "CPY001",
+  "D104",
+  "D107",
+  "D203",
+  "D205",
+  "D211",
+  "D213",
+  "D401",
+  "D404",
+  "D413",    # conflicts with docformatter, which strips the trailing blank line
+  "DOC201",
+  "DOC501",
+  "E501",
+  "EM101",
+  "EM102",
+  "ERA001",
+  "FBT001",
+  "FBT002",
+  "FBT003",
+  "FIX002",
+  "ISC001",
+  "N803",
+  "N812",    # project idiom: `import ipywidgets as W`, `traitlets as T`, `traittypes as TT`
+  "N806",
+  "NPY002",
+  "PD011",
+  "PERF102",
+  "PLR0913",
+  "PLR0917",
+  "PLR2004",
+  "PLR6201",
+  "PLR6301",
+  "PLR0914",
+  "PT028",
+  "RET504",
+  "S101",    # asserts are internal invariant checks, not input validation
+  "RUF059",
+  "T201",
+  "TD002",
+  "TD003",
+  "TRY003",
+]
 
-[tool.pixi.pypi-dependencies]
-ipysensitivityprofiler = { path = ".", editable = true }
+[tool.ruff.lint.per-file-ignores]
+"**/*.ipynb" = ["CPY001"]
+"docs/**/*.py" = ["INP001", "A001"]
+"notebooks/**/*.py" = ["INP001", "PLC2701"]
+"notebooks/**/*.ipynb" = ["PLC2701"]
 
-[tool.pixi.environments]
-default = { features = [], solve-group = "default" }
-lint = { features = ["lint"], solve-group = "default" }
-test = { features = ["test"], solve-group = "default" }
-build = { features = ["build"], solve-group = "default" }
-release = { features = ["release"], solve-group = "default" }
-lab = { features = ["openmdao"], solve-group = "default" }
-
-[tool.pixi.dependencies]
-bqplot = "*"
-jupyter = "*"
-jupyterlab = "*"
-traitlets = "*"
-widgetsnbextension = "*"
-numpy = "*"
-openmdao = "*"  # experimenting with openmdao model visualization
-matplotlib = "*"  # for static plots 
-
-[tool.pixi.feature.lint.dependencies]
-black = "*"
-docformatter = "*"
-lxml = "*"
-mypy = "*"
-ruff = "*"
-pylint = "*"
-
-[tool.pixi.feature.test.dependencies]
-nbmake = "*"
-pytest = "*"
-pytest-cov = "*"
-pytest-html = "*"
-
-[tool.pixi.feature.openmdao.tasks]
-lab = "jupyter lab --no-browser"
-env = { cmd = "conda env export -p .pixi/envs/default --no-builds | grep -v '^prefix: ' | grep -v '^name: ' > environment.yml", inputs = ["pixi.lock", "src/**/*.py"], outputs = ["environment.yml"]}
-
-[tool.pixi.feature.lint.tasks]
-black = { cmd = "black --quiet src/", inputs = ["src/**/*.py"] }
-docformatter = { cmd = "docformatter --in-place src/**/*.py", inputs = ["src/**/*.py"] }
-ruff = { cmd = "ruff check src/ --fix", inputs = ["src/**/*.py"] }
-mypy = { cmd = "mypy --html-report=build/reports/mypy src/", inputs = ["src/**/*.py"] }
-lint = { depends-on = ["docformatter", "black", "ruff", "mypy"] }
-
-[tool.pixi.feature.test.tasks]
-test-py = { cmd = """
-pytest 
--vv 
---failed-first 
---html=build/reports/pytest/report.html  
---self-contained-html 
---cov=jenn 
---cov-context=test 
---cov-report=html:build/reports/pytest
---cov-report=xml:build/reports/pytest/coverage.xml  
---cov-report=term-missing:skip-covered 
--o=junit_family=xunit2 
---junitxml=build/reports/pytest/junit.xml 
-""", inputs = ["src/**/*.py", "tests/"] }
-test-nb = { cmd = "pytest --nbmake --nbmake-timeout=3000 notebooks/*.ipynb", inputs = ["notebooks/*.ipynb"]}
-test = { depends-on = ["test-py", "test-nb"] }
-
-[tool.pixi.feature.build.tasks]
-build-dist = { cmd = "python -m build --outdir build/dist", inputs = ["src/**/*.py"], outputs = ["build/dist/*.whl", "build/dist/*.tar.gz"] }
-build-docs = { cmd = "sphinx-build -b html docs/source build/docs/html", inputs = ["src/**/*.py", "docs/**/*.py", "docs/**/*.rst", "docs/**/*.png"], outputs = ["build/docs/**/*.html"]}
-build = { depends-on = ["build-docs", "build-dist"] }
-
-[tool.pixi.feature.release.tasks]
-release-testpypi = { cmd = "python -m twine upload build/dist/* --verbose --skip-existing --repository testpypi", inputs = ["src/**/*.py"] }
-release-pypi = { cmd = "python -m twine upload build/dist/* --verbose --skip-existing", inputs = ["src/**/*.py"] }
+# docformatter #################################################################
+[tool.docformatter]
+close-quotes-on-newline = true

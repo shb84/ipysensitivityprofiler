@@ -7,9 +7,9 @@ from ._view import View
 __version__ = "0.0.1"
 
 __all__ = [
-    "__version__",
     "Controller",
     "Profiler",
     "View",
+    "__version__",
     "profiler",
 ]

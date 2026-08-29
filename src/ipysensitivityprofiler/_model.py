@@ -1,4 +1,5 @@
-from typing import Any, Callable, List, Optional, Union
+from collections.abc import Callable
+from typing import Any
 
 import ipywidgets as W
 import numpy as np
@@ -26,17 +27,17 @@ class Profiler(W.VBox):
 
 
 def profiler(
-    models: List[Callable],
-    xmin: Union[Union[List[float], np.ndarray], np.ndarray],
-    xmax: Union[List[float], np.ndarray],
-    ymin: Union[List[float], np.ndarray],
-    ymax: Union[List[float], np.ndarray],
-    x0: Optional[Union[List[float], np.ndarray]] = None,
+    models: list[Callable],
+    xmin: list[float] | np.ndarray,
+    xmax: list[float] | np.ndarray,
+    ymin: list[float] | np.ndarray,
+    ymax: list[float] | np.ndarray,
+    x0: list[float] | np.ndarray | None = None,
     resolution: int = DEFAULT_RESOLUTION,
     width: int = DEFAULT_WIDTH,
-    height: Optional[int] = None,
-    xlabels: Optional[List[str]] = None,
-    ylabels: Optional[List[str]] = None,
+    height: int | None = None,
+    xlabels: list[str] | None = None,
+    ylabels: list[str] | None = None,
 ) -> Profiler:
     """Create sensitivity profilers for given models.
 
@@ -103,6 +104,7 @@ def profiler(
 
     Returns:
         Profiler: Jupyter Widget.
+
     """
     if height is None:
         height = width

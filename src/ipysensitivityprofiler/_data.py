@@ -25,14 +25,19 @@ class Data(T.HasTraits):
     y: NDArray = TT.Array()
 
     def __init__(self, **kwargs: Any) -> None:
-        super().__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
         def update(_change: T.Bunch) -> None:
             self.y = self.predict(self.x)
 
         self.observe(update, "predict")
 
-        T.dlink((self, "x"), (self, "y"), self.predict)
+        # NOTE: the lambda defers the lookup of `self.predict`, which is itself a
+        # trait that can be reassigned at runtime; binding it eagerly would freeze
+        # the link to whatever model happens to be set right now. Registering the
+        # link here also computes `y` once for the `x` that `super().__init__` has
+        # already set, so construction costs exactly one evaluation.
+        T.dlink((self, "x"), (self, "y"), lambda x: self.predict(x))  # ruff: ignore[unnecessary-lambda]
 
     @property
     def n_x(self) -> int:
@@ -53,7 +58,8 @@ class Data(T.HasTraits):
     def _validate_x(self, proposal: T.Bunch) -> NDArray:
         x = proposal.value
         if x.ndim != 2 or x.shape[1] != self.n_x or x.dtype != np.float64:
-            return x.astype(np.float64).reshape(-1, self.n_x)  # require shape (m, n_x)
+            # require shape (m, n_x); asarray is a no-op when it already matches
+            return np.asarray(x, dtype=np.float64).reshape(-1, self.n_x)
         assert x.shape[1] == self.n_x
         assert x.dtype == np.float64
         return x

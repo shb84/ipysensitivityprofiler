@@ -85,6 +85,16 @@ Documentation is available [here](https://shb84.github.io/ipysensitivityprofiler
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up
 the development environment (`pixi`) and run the QA pipeline.
 
+# A Note on AI-Assisted Development
+
+This library began in 2024 as hand-written code, and its foundation — the profiling
+idea itself, the widget architecture, and the vectorized numerics behind it — reflects
+deliberate design rather than generated output. We recognize how capable AI has since
+become, and we leverage it judiciously and under human oversight — applying it where it
+genuinely improves the project, such as performance audits and test coverage, not as a
+substitute for understanding it. Every change, whatever its source, is held to the same
+standard of review.
+
 # License
 
 Distributed under the terms of the MIT License.

@@ -8,6 +8,7 @@ from openmdao.api import Problem
 from openmdao.utils.units import convert_units
 
 from ipysensitivityprofiler._model import Profiler, profiler
+from ipysensitivityprofiler._utils import grid_size
 from ipysensitivityprofiler._view import DEFAULT_RESOLUTION, DEFAULT_WIDTH
 
 
@@ -53,7 +54,7 @@ def openmdao_profiler(
     if height is None:
         height = width
 
-    problem.model.options["num_nodes"] = len(inputs) * resolution
+    problem.model.options["num_nodes"] = grid_size(len(inputs), resolution)
     problem.setup()
 
     x_labels = []
@@ -76,9 +77,7 @@ def openmdao_profiler(
         y_max.append(upper)
         y_units.append(units)
 
-    n_x = len(x_labels)
     n_y = len(y_labels)
-    m = n_x * resolution
 
     x_min = np.array(x_min)
     x_max = np.array(x_max)
@@ -108,10 +107,12 @@ def openmdao_profiler(
         for i, x_label in enumerate(x_labels):
             problem.set_val(x_label, x[:, i], x_units[i])
         problem.run_model()
-        y = np.zeros((m, n_y, 1))
+        # Size from the array actually handed over rather than a captured constant,
+        # so this stays correct if the grid layout ever changes again.
+        y = np.zeros((x.shape[0], n_y, 1))
         for i, y_label in enumerate(y_labels):
             y[:, i, 0] = problem.get_val(y_label, y_units[i])
-        return y.reshape((m, -1, 1))
+        return y
 
     return profiler(
         models=[evaluate],

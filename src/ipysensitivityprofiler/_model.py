@@ -38,6 +38,10 @@ def profiler(
     height: int | None = None,
     xlabels: list[str] | None = None,
     ylabels: list[str] | None = None,
+    colors: list[str] | None = None,
+    line_styles: list[str] | None = None,
+    model_labels: list[str] | None = None,
+    show_legend: bool | None = None,
 ) -> Profiler:
     """Create sensitivity profilers for given models.
 
@@ -102,6 +106,26 @@ def profiler(
         ylabels: Union[List[float], np.ndarray]
             Labels to use for outputs. Default is None (which becomes y1, y2, ...)
 
+        colors: List[str], optional
+            Line color per model, by position, as any CSS color. Cycled if
+            shorter than `models`. Default is None, which uses a colorblind-safe
+            categorical palette. Pass
+            `ipysensitivityprofiler._utils.DARK_COLORS` under a dark theme.
+
+        line_styles: List[str], optional
+            Line style per model, by position: one of "solid", "dashed",
+            "dotted", "dash_dotted". Cycled if shorter than `models`. Default is
+            None, which cycles all four so models stay distinguishable without
+            relying on color alone.
+
+        model_labels: List[str], optional
+            Legend label per model. Default is None, which uses each model's
+            function name.
+
+        show_legend: bool, optional
+            Show a legend keying models to their color and stroke. Default is
+            None, which shows one when there is more than one model.
+
     Returns:
         Profiler: Jupyter Widget.
 
@@ -116,13 +140,37 @@ def profiler(
         x0 = [0.5 * (xmin[i] + xmax[i]) for i in range(nx)]
 
     def evaluate(x: np.ndarray) -> np.ndarray:
-        outputs = [f(x.reshape(-1, nx)).reshape((-1, ny, 1)) for f in models]
+        # NOTE: concatenate + reshape benchmarks faster here than np.stack; see
+        # https://github.com/shb84/ipysensitivityprofiler/issues/4 (item 3.2).
+        outputs = [f(x).reshape((-1, ny, 1)) for f in models]
         return np.concatenate(outputs, axis=2)
+
+    if model_labels is None:
+        # A named function is a better legend key than "model 1"; lambdas and other
+        # anonymous callables have no useful __name__, so fall back for those.
+        model_labels = [
+            name
+            if (name := getattr(f, "__name__", "<lambda>")) != "<lambda>"
+            else f"model {k + 1}"
+            for k, f in enumerate(models)
+        ]
+
+    # NOTE: `None` would be rejected by the `T.List` / `T.Bool` traits before their
+    # validators get a chance to substitute the documented defaults, so omit the
+    # keys entirely.
+    optional: dict[str, Any] = {
+        "xlabels": xlabels,
+        "ylabels": ylabels,
+        "colors": colors,
+        "line_styles": line_styles,
+        "model_labels": model_labels,
+        "show_legend": show_legend,
+    }
+    labels = {key: value for key, value in optional.items() if value is not None}
 
     view = View(
         predict=evaluate,
-        xlabels=xlabels,
-        ylabels=ylabels,
+        **labels,
         xmin=xmin,
         xmax=xmax,
         ymin=ymin,

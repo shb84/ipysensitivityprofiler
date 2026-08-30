@@ -23,7 +23,12 @@ DEFAULT_HEIGHT = DEFAULT_WIDTH
 
 
 class View(W.Box):
-    """Widget to display grid of sensivity profiles."""
+    """Widget to display grid of sensivity profiles.
+
+    Construction builds the whole figure grid but does *not* evaluate the
+    models: the curves start flat and the first evaluation happens on
+    :py:meth:`refresh`. See :py:meth:`refresh`.
+    """
 
     # _view_module = T.Unicode('sensivity_profiler').tag(sync=True)
     # _view_module_version = T.Unicode('0.0.0').tag(sync=True)
@@ -79,6 +84,10 @@ class View(W.Box):
     xlabels: list[str] = T.List(allow_none=False, help="The name of each input")  # type: ignore [assignment]
     ylabels: list[str] = T.List(allow_none=False, help="The name of each output")  # type: ignore [assignment]
 
+    n_models: int = T.Int(
+        help="Number of models being profiled, i.e. the number of curves per figure."
+    )  # type: ignore [assignment]
+
     data: Data = T.Instance(klass=Data, help="object in charge of updating data")  # type: ignore [assignment]
     grid: W.GridspecLayout = T.Instance(
         klass=W.GridspecLayout, help="Grid containing all figures"
@@ -105,6 +114,15 @@ class View(W.Box):
     def __init__(self, **kwargs: Any):
         super().__init__(**kwargs)
 
+        ##################
+        # Build the grid #
+        ##################
+
+        # FIRST, before anything can call a user model. `grid` is a `T.default`, so
+        # touching it here is what constructs every Figure/Lines/Scatter widget. A
+        # slow model that blocks before these exist renders a blank cell (#6).
+        self.children = [self.grid]
+
         #########
         # Links #
         #########
@@ -124,6 +142,8 @@ class View(W.Box):
         # Initialize #
         ##############
 
+        # Draws `data.y`, which is still the placeholder -- flat curves, but with the
+        # correct x values on every line. `refresh()` fills in the real ones.
         self._on_y_changed()
         self._update_lims()
         self._update_labels()
@@ -140,7 +160,17 @@ class View(W.Box):
             ["colors", "line_styles", "model_labels", "show_legend"],
         )
 
-        self.children = [self.grid]
+    def refresh(self) -> None:
+        """Evaluate the models and redraw.
+
+        Construction draws flat placeholder curves rather than
+        evaluating, so that every widget exists before a slow model is
+        allowed to block (#6).
+        :py:func:`ipysensitivityprofiler.profiler` calls this once the
+        whole widget tree has been assembled; call it yourself when
+        building a :py:class:`View` directly.
+        """
+        self.data.refresh()
 
     ###############
     # Interactive #
@@ -231,12 +261,25 @@ class View(W.Box):
         n_y = self.ymin.size
         return [f"y{i}" for i in range(n_y)]
 
+    @T.default("n_models")
+    def _create_n_models(self) -> int:
+        # Legacy path only: `profiler()` always passes this explicitly, precisely so
+        # that no model runs before the widgets exist (#6). Constructing a bare `View`
+        # still has to learn the count somehow, and one row is cheap enough.
+        #
+        # NOTE: probe with a row built from `xmin` rather than with `self.x0`. This
+        # runs during `super().__init__`, where cross-validators fire in an order we
+        # do not control, so `x0` may not have been reshaped to (1, n_x) yet.
+        probe = np.zeros((1, self.xmin.size), dtype=np.float64)
+        return self.predict(probe).shape[2]
+
     @T.default("data")
     def _create_data(self) -> Data:
         data = Data(
             predict=self.predict,
             xlabels=self.xlabels,
             ylabels=self.ylabels,
+            n_models=self.n_models,
             x=create_grid(
                 x0=self.x0, xmin=self.xmin, xmax=self.xmax, resolution=self.resolution
             ),

@@ -12,10 +12,17 @@ class Data(T.HasTraits):
 
     This class is in charge of managing source data and calling user
     prediction models as needed.
+
+    Construction deliberately does *not* evaluate: `y` starts as a
+    placeholder of the right shape and the models run only once
+    :py:meth:`refresh` is called. See :py:meth:`refresh`.
     """
 
     xlabels: list[str] = T.List(allow_none=False)  # type: ignore [assignment]
     ylabels: list[str] = T.List(allow_none=False)  # type: ignore [assignment]
+    n_models: int = T.Int(
+        1, help="Number of models, i.e. the number of curves in each figure."
+    )  # type: ignore [assignment]
     predict: Callable = T.Callable(
         allow_none=False,
         help="Callback that calls user provided models to update data as needed.",
@@ -27,17 +34,28 @@ class Data(T.HasTraits):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-        def update(_change: T.Bunch) -> None:
-            self.y = self.predict(self.x)
+        # NOTE: a plain observer rather than a `T.dlink`. A dlink fires the moment it
+        # is registered, which used to run the user's models here -- before `View` had
+        # created a single figure widget, so a slow model rendered a blank cell (#6).
+        # An observer defers that first evaluation to `refresh()`, which `profiler()`
+        # calls once the whole widget tree exists. Reading `self.predict` inside the
+        # callback (rather than binding it now) also keeps the old dlink lambda's
+        # property: `predict` is itself a reassignable trait, and the callback must
+        # always use whatever model is current, not the one set at construction.
+        self.observe(self._recompute, ["x", "predict"])
 
-        self.observe(update, "predict")
+    def refresh(self) -> None:
+        """Evaluate the models over the current grid."""
+        self.y = self.predict(self.x)
 
-        # NOTE: the lambda defers the lookup of `self.predict`, which is itself a
-        # trait that can be reassigned at runtime; binding it eagerly would freeze
-        # the link to whatever model happens to be set right now. Registering the
-        # link here also computes `y` once for the `x` that `super().__init__` has
-        # already set, so construction costs exactly one evaluation.
-        T.dlink((self, "x"), (self, "y"), lambda x: self.predict(x))  # ruff: ignore[unnecessary-lambda]
+    def _recompute(self, _change: T.Bunch) -> None:
+        self.refresh()
+
+    @T.default("y")
+    def _create_y(self) -> NDArray:
+        # Placeholder, so that `N` -- and therefore the whole figure grid -- is
+        # answerable before any model has run (#6).
+        return np.zeros((self.x.shape[0], self.n_y, self.n_models))
 
     @property
     def n_x(self) -> int:
@@ -69,5 +87,8 @@ class Data(T.HasTraits):
         y = proposal.value
         assert y.ndim == 3  # require shape (m, n_y, N)
         assert y.shape[1] == self.n_y
+        # Fail here rather than as an opaque `zip(..., strict=True)` error inside
+        # `View._update_figs`, which has one mark pair per model.
+        assert y.shape[2] == self.n_models
         assert y.dtype == np.float64
         return y

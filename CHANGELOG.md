@@ -18,7 +18,27 @@ build: Changes to the build process or tools.
 
 # Changelog
 
-## v0.0.2 (Unreleased)
+## v0.0.3 (Unreleased)
+
+### Fix
+
+- A model taking more than a couple of seconds rendered the widget as a completely
+  blank cell in JupyterLab -- no axes, no frame, nothing. The models were evaluated
+  while `View` was still being constructed, so the browser was told to display the
+  widget before any of the figure widgets it needed had been registered. The whole
+  widget tree is now built first and the models run exactly once afterwards, so a slow
+  model shows an empty set of axes while it works instead of nothing at all.
+
+### Feat
+
+- `View.refresh()` evaluates the models and redraws. Constructing a `View` now draws
+  flat placeholder curves rather than evaluating, so that no model can block before the
+  figures exist; `profiler()` calls `refresh()` for you once the widget is assembled.
+  Code building a `View` directly should call it after construction. The number of
+  models is carried by the new `View.n_models` trait instead of being read back out of
+  the model output.
+
+## v0.0.2 (2026-08-29)
 
 ### Feat
 

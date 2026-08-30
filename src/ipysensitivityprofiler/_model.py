@@ -129,6 +129,11 @@ def profiler(
     Returns:
         Profiler: Jupyter Widget.
 
+    Note:
+        The models are evaluated exactly once here, after the widget has been
+        fully built. A slow model therefore shows an empty set of axes while it
+        runs rather than blocking the widget from rendering at all.
+
     """
     if height is None:
         height = width
@@ -170,6 +175,9 @@ def profiler(
 
     view = View(
         predict=evaluate,
+        # Stating the count up front is what lets the figure grid be built before any
+        # model runs; otherwise it can only be read back out of the model output (#6).
+        n_models=len(models),
         **labels,
         xmin=xmin,
         xmax=xmax,
@@ -183,4 +191,10 @@ def profiler(
 
     controller = Controller(view)
 
-    return Profiler(view, controller)
+    widget = Profiler(view, controller)
+
+    # Every widget -- figures, marks, sliders, the outer box -- now exists and has been
+    # announced to the frontend. Only now is it safe to let a slow model block (#6).
+    view.refresh()
+
+    return widget

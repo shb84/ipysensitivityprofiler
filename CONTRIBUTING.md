@@ -164,41 +164,97 @@ _Check that the package appears on `testpypi` and try manually installing it in 
 virtual environment to ensure it runs as expected, as an extra layer of precaution. If
 not, please help update the CI procedure to catch the newly found issues._
 
+### Versioning
+
+The repository always carries a **preset next version**: the top section of
+`CHANGELOG.md` is `## vX.Y.Z (Unreleased)`, and `__version__` in
+`src/ipysensitivityprofiler/__init__.py` already matches it. It is set right after each
+release so that there is always somewhere to add changelog entries, and so the released
+version and its changelog section cannot drift apart.
+
+The preset is a **convenient placeholder, not a commitment.** We cannot know in advance
+whether the next change will be a fix, a feature or a breaking change, so by default we
+preset the next patch (`Z + 1`). Adjust it to match what actually lands:
+
+| What landed | Bump |
+|---|---|
+| Breaking API change | `X + 1` (reset `Y`, `Z` to 0) |
+| New feature, backwards compatible | `Y + 1` (reset `Z` to 0) |
+| Bug fix, no API change | `Z + 1` — the usual preset, already set |
+
+So while working on a change:
+
+- Add your entry under the existing `## vX.Y.Z (Unreleased)` section, in the
+  appropriate `### Feat` / `### Fix` / etc. sub-heading (the comment at the top of
+  `CHANGELOG.md` lists the categories).
+- If the preset patch bump does not fit what you did, raise it — in `__init__.py` and
+  the changelog heading both — and say why in your pull request.
+
 ### Procedure
 
 `__version__` in `src/ipysensitivityprofiler/__init__.py` is the single source of truth —
-`pyproject.toml` reads it dynamically, and the release pipeline gates on it. Assuming
-`main` is locally up-to-date, update it:
+`pyproject.toml` reads it dynamically, and the release pipeline gates on it.
 
-```bash
-__version__ = "0.0.2"
+Assuming `main` is locally up-to-date, and that `__version__` and the `(Unreleased)`
+changelog heading agree (they should — see above; if the release warrants a different
+bump than the preset, change both now):
+
+**1. Close out the changelog section.** Replace `(Unreleased)` with today's date:
+
+```markdown
+## v0.0.3 (2026-08-30)
 ```
 
-Add a matching `## v0.0.2` section to `CHANGELOG.md` (its contents become the GitHub
-Release notes), then push the version change to the remote:
+Its contents become the GitHub Release notes. Commit and push:
 
 ```bash
 git add -u
-git commit -m "changed version to v0.0.2"
+git commit -m "docs: release v0.0.3"
 git push
 ```
 
-Tag the commit for release and push to trigger the release pipeline:
+**2. Tag the commit** to trigger the release pipeline:
 
 ```bash
-git tag v0.0.2
-git push origin v0.0.2
+git tag v0.0.3
+git push origin v0.0.3
 ```
 
 Once the pipeline reaches the `publish-pypi` job it will wait for manual approval. After
 it succeeds, check that there is a new release on `pypi.org`, `GitHub Pages` and
 `GitHub Release`.
 
+**3. Preset the next version**, as part of the release rather than later. Default to the
+next patch, and set it in **all three** places:
+
+| File | Change |
+|---|---|
+| `src/ipysensitivityprofiler/__init__.py` | `__version__ = "0.0.4"` |
+| `CHANGELOG.md` | new empty `## v0.0.4 (Unreleased)` section at the top |
+| `CONTRIBUTING.md` | the example version numbers in this section |
+
+Then reinstall so the metadata test sees the new version, and commit:
+
+```bash
+pixi run -e dev pip-e
+git add -u
+git commit -m "build: preset version v0.0.4 for next release"
+git push
+```
+
+`tests/test_meta.py` compares `__version__` against the *installed* distribution, so
+skipping `pip-e` will fail the suite. `pixi` caches task results by input hash and may
+report a cache hit; if it does, run the install directly:
+
+```bash
+.pixi/envs/dev/bin/python -m pip install -e . --no-deps --no-build-isolation
+```
+
 _To delete the tag if needed (e.g. a step failed in CI)_:
 
 ```bash
-git tag -d v0.0.2
-git push origin --delete v0.0.2
+git tag -d v0.0.3
+git push origin --delete v0.0.3
 ```
 
 ### TestPyPI API token (local mock releases only)

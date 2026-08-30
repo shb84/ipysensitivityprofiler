@@ -80,10 +80,21 @@ value does not fire observers. Useful, and a trap when a test expects a change e
 
 ## Gotchas
 
-- `__version__` in `src/ipysensitivityprofiler/__init__.py` is the single source of
-  truth (`pyproject.toml` reads it dynamically; the release pipeline gates on it).
-  `tests/test_meta.py` compares it against the *installed* distribution — after bumping
-  it, run `pixi run -e dev pip-e` or that test fails.
+- **The next version is already set; do not bump it as part of ordinary work.** The top
+  of `CHANGELOG.md` is always `## vX.Y.Z (Unreleased)` and `__version__` in
+  `src/ipysensitivityprofiler/__init__.py` already matches it — it is preset right after
+  each release. Add changelog entries under that existing section. The preset defaults
+  to the next patch (`Z + 1`), so raise it only if what you did warrants more: `Y + 1`
+  for a backwards-compatible feature, `X + 1` for a breaking API change. If you do,
+  change `__init__.py` and the changelog heading together and flag it. A released
+  section still marked `(Unreleased)` means the post-release preset step was missed —
+  fix the stale heading rather than adding to it. See CONTRIBUTING.md → Versioning.
+- `__version__` is the single source of truth (`pyproject.toml` reads it dynamically;
+  the release pipeline gates on it). `tests/test_meta.py` compares it against the
+  *installed* distribution — if it does change, run `pixi run -e dev pip-e` or that test
+  fails. That task is cached by input hash and may report a cache hit without actually
+  reinstalling; if the test still fails, run `.pixi/envs/dev/bin/python -m pip install
+  -e . --no-deps --no-build-isolation` directly.
 - `notebooks/openmdao_example/_openmdao_profiler.py` sets `num_nodes` at `setup()` time
   and it must equal `grid_size(len(inputs), resolution)`. Changing the grid contract
   breaks it, and `test-nb` is its only coverage.

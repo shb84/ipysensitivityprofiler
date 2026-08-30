@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import ipysensitivityprofiler as isp
+from ipysensitivityprofiler import _model, _view
 from ipysensitivityprofiler._data import Data
 from ipysensitivityprofiler._utils import grid_size
 
@@ -69,6 +70,112 @@ def marks_of(view: Any, i: int, j: int) -> tuple[list, list]:
     lines = [m for m in marks if isinstance(m, bq.marks.Lines)]
     dots = [m for m in marks if isinstance(m, bq.marks.Scatter)]
     return lines, dots
+
+
+#####################################
+# When models are called (issue #6) #
+#####################################
+
+
+def test_widgets_are_built_before_any_model_runs(monkeypatch: Any) -> None:
+    """No user model may run until the whole widget tree exists.
+
+    Issue #6: the models used to run while `View` was still under construction,
+    so with a slow model the frontend received the cell's display message before
+    a single figure widget had been registered, and rendered a blank cell.
+    """
+    order: list[str] = []
+    real_make_grid = _view.make_grid
+    real_controller = _model.Controller
+
+    def spy_make_grid(*args: Any, **kwargs: Any) -> Any:
+        order.append("grid")
+        return real_make_grid(*args, **kwargs)
+
+    def spy_controller(*args: Any, **kwargs: Any) -> Any:
+        order.append("controller")
+        return real_controller(*args, **kwargs)
+
+    monkeypatch.setattr(_view, "make_grid", spy_make_grid)
+    monkeypatch.setattr(_model, "Controller", spy_controller)
+
+    def f(x: np.ndarray) -> np.ndarray:
+        order.append("model")
+        return np.column_stack([x.sum(axis=1)])
+
+    isp.profiler(
+        models=[f],
+        xmin=XMIN,
+        xmax=XMAX,
+        ymin=YMIN,
+        ymax=YMAX,
+        x0=X0,
+        resolution=RESOLUTION,
+    )
+
+    assert order == ["grid", "controller", "model"]
+
+
+def make_evaluate(counter: dict[str, int], n_models: int = 2) -> Any:
+    """Build the multi-model callback that `profiler()` hands to `View`."""
+    models = [make_model(counter, scale=k + 1.0) for k in range(n_models)]
+
+    def evaluate(x: np.ndarray) -> np.ndarray:
+        return np.concatenate([f(x).reshape((-1, NY, 1)) for f in models], axis=2)
+
+    return evaluate
+
+
+def test_view_infers_model_count_when_not_given(counter: dict[str, int]) -> None:
+    """A bare `View` still works: it probes for the count with a single row.
+
+    `profiler()` passes `n_models` so that nothing runs before the widgets exist,
+    but `View` is public and must stay constructible on its own.
+    """
+    view = isp.View(
+        predict=make_evaluate(counter),
+        xmin=XMIN,
+        xmax=XMAX,
+        ymin=YMIN,
+        ymax=YMAX,
+        x0=X0,
+        resolution=RESOLUTION,
+        xlabels=["x1", "x2"],
+        ylabels=["y"],
+    )
+
+    assert counter["rows"] == 2  # one row per model, not the whole grid
+    assert len(marks_of(view, 0, 0)[0]) == 2
+
+
+def test_view_construction_does_not_evaluate(counter: dict[str, int]) -> None:
+    """Building a `View` draws flat placeholders; `refresh()` runs the models."""
+    view = isp.View(
+        predict=make_evaluate(counter),
+        n_models=2,
+        xmin=XMIN,
+        xmax=XMAX,
+        ymin=YMIN,
+        ymax=YMAX,
+        x0=X0,
+        resolution=RESOLUTION,
+        xlabels=["x1", "x2"],
+        ylabels=["y"],
+        width=600,
+        height=300,
+    )
+
+    assert counter["calls"] == 0
+    lines, _ = marks_of(view, 0, 0)
+    assert len(lines) == 2  # one placeholder curve per model, drawn flat
+    np.testing.assert_allclose(lines[0].y, np.zeros(RESOLUTION))
+
+    view.refresh()
+
+    assert counter["calls"] == 2
+    grid = np.tile(np.array(X0, dtype=float), (RESOLUTION, 1))
+    grid[:, 0] = np.linspace(XMIN[0], XMAX[0], RESOLUTION)
+    np.testing.assert_allclose(lines[0].y, (grid * WEIGHTS).sum(axis=1))
 
 
 ###############################

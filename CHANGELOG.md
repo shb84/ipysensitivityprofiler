@@ -18,7 +18,9 @@ build: Changes to the build process or tools.
 
 # Changelog
 
-## v0.0.3 (Unreleased)
+## v0.0.4 (Unreleased)
+
+## v0.0.3 (2026-08-30)
 
 ### Fix
 
